@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from pydantic.config import ConfigDict
+from typing import Optional
 
 # ===== AUTH INPUTS =====
 class UserCreate(BaseModel):
@@ -27,3 +28,9 @@ class UserOut(BaseModel):
 # ===== ADMIN INPUT =====
 class PromoteRole(BaseModel):
     role: str  # "docente" o "admin"
+
+# ===== NUEVO: Actualizar usuario =====
+class UserUpdate(BaseModel):
+    nombre: Optional[str] = None
+    correo: Optional[EmailStr] = None
+    role: Optional[str] = None

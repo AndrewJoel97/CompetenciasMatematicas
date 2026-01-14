@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from .database import Base, engine, get_db, SessionLocal
 from .models import User
-from .schemas import UserCreate, UserLogin, TokenResponse, UserOut, PromoteRole
+from .schemas import UserCreate, UserLogin, TokenResponse, UserOut, PromoteRole, UserUpdate
 from .auth import (
     hash_password,
     verify_password,
@@ -129,8 +129,50 @@ def me(current_user: User = Depends(get_current_user)):
 def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     return db.query(User).order_by(User.id.desc()).all()
 
+# ===== NUEVO: Actualizar usuario completo (nombre, correo, rol) =====
+@app.put("/admin/users/{user_id}", response_model=UserOut)
+def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """
+    Actualiza datos del usuario (nombre, correo, rol)
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # Actualizar nombre
+    if payload.nombre:
+        user.nombre = payload.nombre
+    
+    # Actualizar correo
+    if payload.correo:
+        # Verificar que el correo no esté en uso
+        existing = db.query(User).filter(User.correo == payload.correo, User.id != user_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="El correo ya está en uso")
+        user.correo = payload.correo
+    
+    # Actualizar rol
+    if payload.role:
+        if payload.role not in ["docente", "admin", "estudiante"]:
+            raise HTTPException(status_code=400, detail="Rol inválido")
+        user.role = payload.role
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+# ===== ALTERNATIVA: POST para actualizar (por si lo prefieres) =====
+@app.post("/admin/users/{user_id}", response_model=UserOut)
+def update_user_post(user_id: int, payload: UserUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """
+    Alternativa POST para actualizar usuario
+    """
+    return update_user(user_id, payload, db, _)
+
+# ===== CAMBIAR ROL (ahora acepta PUT, POST y PATCH) =====
 @app.put("/admin/users/{user_id}/role", response_model=UserOut)
-def change_role(user_id: int, payload: PromoteRole, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def change_role_put(user_id: int, payload: PromoteRole, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Cambiar rol vía PUT"""
     if payload.role not in ["docente", "admin", "estudiante"]:
         raise HTTPException(status_code=400, detail="Rol inválido")
 
@@ -142,6 +184,16 @@ def change_role(user_id: int, payload: PromoteRole, db: Session = Depends(get_db
     db.commit()
     db.refresh(user)
     return user
+
+@app.post("/admin/users/{user_id}/role", response_model=UserOut)
+def change_role_post(user_id: int, payload: PromoteRole, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Cambiar rol vía POST"""
+    return change_role_put(user_id, payload, db, _)
+
+@app.patch("/admin/users/{user_id}/role", response_model=UserOut)
+def change_role_patch(user_id: int, payload: PromoteRole, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Cambiar rol vía PATCH"""
+    return change_role_put(user_id, payload, db, _)
 
 @app.delete("/admin/users/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db), current_admin: User = Depends(require_admin)):
